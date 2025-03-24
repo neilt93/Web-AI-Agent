@@ -1,0 +1,6 @@
+2025/03/23-23:02:55.476 3b03 Reusing MANIFEST /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/Local Storage/leveldb/MANIFEST-000001
+2025/03/23-23:02:55.479 3b03 Recovering log #40
+2025/03/23-23:02:55.479 3b03 Reusing old log /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/Local Storage/leveldb/000040.log 
+2025/03/23-23:03:05.150 3903 Level-0 table #44: started
+2025/03/23-23:03:05.156 3903 Level-0 table #44: 355965 bytes OK
+2025/03/23-23:03:05.159 3903 Delete type=0 #40

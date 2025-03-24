@@ -1,0 +1,3 @@
+2025/03/23-22:47:45.230 a703 Creating DB /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/IndexedDB/https_www.notion.so_0.indexeddb.leveldb since it was missing.
+2025/03/23-22:47:45.234 a703 Reusing MANIFEST /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/IndexedDB/https_www.notion.so_0.indexeddb.leveldb/MANIFEST-000001
+2025/03/23-22:47:45.520 b103 Manual compaction at level-0 from '\x00\x01\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x02\x00\x00\x00' @ 0 : 0; will stop at (end)

@@ -1,0 +1,14 @@
+2025/03/23-23:01:33.816 a303 Reusing MANIFEST /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/IndexedDB/https_www.notion.so_0.indexeddb.leveldb/MANIFEST-000001
+2025/03/23-23:01:33.817 a303 Recovering log #14
+2025/03/23-23:01:33.817 a303 Reusing old log /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/IndexedDB/https_www.notion.so_0.indexeddb.leveldb/000014.log 
+2025/03/23-23:01:33.817 a303 Delete type=2 #12
+2025/03/23-23:01:34.154 a303 Level-0 table #19: started
+2025/03/23-23:01:34.155 a303 Level-0 table #19: 534 bytes OK
+2025/03/23-23:01:34.158 a303 Delete type=0 #14
+2025/03/23-23:01:34.158 a303 Manual compaction at level-0 from '\x00\x0c\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at '\x00\x0c\x00\x00\x05' @ 941 : 1
+2025/03/23-23:01:34.158 a303 Compacting 1@0 + 1@1 files
+2025/03/23-23:01:34.160 a303 Generated table #20@0: 116 keys, 1583 bytes
+2025/03/23-23:01:34.160 a303 Compacted 1@0 + 1@1 files => 1583 bytes
+2025/03/23-23:01:34.161 a303 compacted to: files[ 0 1 1 0 0 0 0 ]
+2025/03/23-23:01:34.161 a303 Delete type=2 #19
+2025/03/23-23:01:34.161 a303 Manual compaction at level-0 from '\x00\x0c\x00\x00\x05' @ 941 : 1 .. '\x00\x0d\x00\x00\x00' @ 0 : 0; will stop at (end)

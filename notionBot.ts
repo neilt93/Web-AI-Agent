@@ -55,7 +55,7 @@ export const launchBot = async () => {
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     });
 
-    const page = await browser.newPage();
+    let page = await browser.newPage();
     
     // Add additional headers to make the browser appear more legitimate
     await page.setExtraHTTPHeaders({
@@ -89,17 +89,131 @@ export const launchBot = async () => {
 
       // Collect information about all open pages
       const pages = await Promise.all(
-        browser.pages().map(async (p, index) => ({
-          index,
-          url: p.url(),
-          title: await p.title()
-        }))
+        browser.pages().map(async (p, index) => {
+          try {
+            return {
+              index,
+              url: p.url(),
+              title: await p.title().catch(() => 'Loading...')
+            };
+          } catch (error) {
+            return {
+              index,
+              url: p.url(),
+              title: 'Loading...'
+            };
+          }
+        })
       );
   
       const gptResponse = await askGPTVisionWhatToDo(screenshotPath, pages, actionHistory);
   
       console.log(`\n[🧠] GPT Suggestion (Step ${step}):\n`, gptResponse);
       console.log('\n[📑] Open Pages:', pages.map(p => `\n  Tab ${p.index}: ${p.title}`).join(''));
+
+      // Check for Google security challenges
+      const currentPage = pages.find(p => p.url.includes('accounts.google.com'));
+      if (currentPage) {
+        const targetPage = browser.pages()[currentPage.index];
+        if (targetPage) {
+          try {
+            // Wait for navigation to complete
+            await targetPage.waitForLoadState('networkidle');
+            const pageContent = await targetPage.content().catch(() => '');
+            
+            // Check for initial Google sign-in popup
+            if (pageContent && (
+              pageContent.includes('Choose an account') ||
+              pageContent.includes('Continue with Google')
+            )) {
+              console.log('[ℹ️] Google sign-in popup detected, continuing with automation...');
+              continue;
+            }
+            
+            // Check for actual authentication challenges
+            if (pageContent && (
+              pageContent.includes('This browser or app may not be secure') || 
+              pageContent.includes('Couldn\'t sign you in') ||
+              pageContent.includes('Verify it\'s you') ||
+              pageContent.includes('Security check') ||
+              pageContent.includes('QR code') ||
+              pageContent.includes('passkey') ||
+              pageContent.includes('2-Step Verification')
+            )) {
+              console.log('\n[⚠️] Authentication Challenge Detected!');
+              console.log('The bot has encountered a security verification that requires human intervention.');
+              console.log('Please complete the verification manually in the browser window.');
+              console.log('This may include:');
+              console.log('- Scanning a QR code');
+              console.log('- Using a passkey');
+              console.log('- Completing 2-Step Verification');
+              console.log('Once you\'ve completed the verification, press Enter to continue...');
+              await new Promise(resolve => process.stdin.once('data', resolve));
+              console.log('Resuming automation...\n');
+
+              // After manual authentication, wait for navigation and update state
+              try {
+                // Wait for any navigation to complete
+                await targetPage.waitForLoadState('networkidle');
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Extra wait for any redirects
+                
+                // Get updated list of pages
+                const updatedPages = await Promise.all(
+                  browser.pages().map(async (p, index) => ({
+                    index,
+                    url: p.url(),
+                    title: await p.title().catch(() => 'Loading...')
+                  }))
+                );
+
+                // Find the Notion page if we've been redirected
+                const notionPage = updatedPages.find(p => p.url.includes('notion.so'));
+                if (notionPage) {
+                  const newPage = browser.pages()[notionPage.index];
+                  console.log('[🔄] Authentication complete, updating to Notion page...');
+                  await newPage.bringToFront();
+                  await bot.setPage(newPage);
+                  page = newPage; // Update the main page reference
+                } else {
+                  // If we're still on Google, update to the current Google page
+                  const currentGooglePage = updatedPages.find(p => p.url.includes('accounts.google.com'));
+                  if (currentGooglePage) {
+                    const newPage = browser.pages()[currentGooglePage.index];
+                    await newPage.bringToFront();
+                    await bot.setPage(newPage);
+                    page = newPage;
+                  }
+                }
+              } catch (error) {
+                console.log('[ℹ️] Error during page update after authentication:', error);
+                // Try to recover by getting the current active page
+                const currentPages = browser.pages();
+                if (currentPages.length > 0) {
+                  const activePage = currentPages[0];
+                  await activePage.bringToFront();
+                  await bot.setPage(activePage);
+                  page = activePage;
+                }
+              }
+            }
+          } catch (error) {
+            // Ignore navigation errors when checking content
+            console.log('[ℹ️] Page is navigating, skipping content check...');
+          }
+        }
+      }
+  
+      // Prevent infinite loops by checking action history
+      const recentActions = actionHistory.slice(-3);
+      if (recentActions.length >= 3 && 
+          recentActions.every(a => a.action === 'click' && a.selector === gptResponse.selector)) {
+        console.log('\n[⚠️] Detected potential infinite loop!');
+        console.log('The bot has attempted the same action multiple times.');
+        console.log('Please check the page and complete any required actions manually.');
+        console.log('Press Enter when ready to continue...');
+        await new Promise(resolve => process.stdin.once('data', resolve));
+        console.log('Resuming automation...\n');
+      }
   
       // Get the target page for the action
       const targetTabIndex = gptResponse.tabIndex ?? 0;

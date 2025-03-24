@@ -1,0 +1,5 @@
+2025/03/23-22:47:38.702 2d03 Creating DB /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/Local Storage/leveldb since it was missing.
+2025/03/23-22:47:38.711 2d03 Reusing MANIFEST /Users/neiltripathi/Documents/Web AI Agent /playwright-data/Default/Local Storage/leveldb/MANIFEST-000001
+2025/03/23-22:47:49.906 3503 Level-0 table #5: started
+2025/03/23-22:47:49.912 3503 Level-0 table #5: 46940 bytes OK
+2025/03/23-22:47:49.915 3503 Delete type=0 #3
