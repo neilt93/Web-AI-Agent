@@ -24,15 +24,18 @@ export class Navigator {
 
   async click(selector: string) {
     if (!this.page) throw new Error('Browser not launched');
-    await this.page.waitForSelector(selector, { state: 'visible' });
+    console.log(`[🔍] Waiting to click selector: ${selector}`);
+    await this.page.waitForSelector(selector, { timeout: 10000, state: 'visible' });
     await this.page.click(selector);
-    console.log(`[👆] Clicked on: ${selector}`);
+    console.log(`[🖱] Clicked: ${selector}`);
   }
-
+  
   async type(selector: string, text: string) {
     if (!this.page) throw new Error('Browser not launched');
+    console.log(`[🔍] Waiting to type into selector: ${selector}`);
+    await this.page.waitForSelector(selector, { timeout: 10000, state: 'visible' });
     await this.page.fill(selector, text);
-    console.log(`Typed into: ${selector} — "${text}"`);
+    console.log(`[⌨️ ] Typed "${text}" into: ${selector}`);
   }
 
   async getPageContent(): Promise<string> {
@@ -44,6 +47,29 @@ export class Navigator {
     if (!this.page) throw new Error('Browser not launched');
     await this.page.waitForSelector(selector, options);
     console.log(`[⏳] Waited for selector: ${selector}`);
+  }
+
+  async describeInput(selector: string): Promise<string> {
+    if (!this.page) throw new Error('Browser not launched');
+    return await this.page.evaluate((sel) => {
+      const el = document.querySelector<HTMLInputElement>(sel);
+      if (!el) return 'not found';
+      const label = el.closest('label')?.innerText || '';
+      const placeholder = el.placeholder || '';
+      const aria = el.getAttribute('aria-label') || '';
+      return [label, placeholder, aria].join(' | ');
+    }, selector);
+  }
+
+  async getCurrentURL(): Promise<string> {
+    if (!this.page) throw new Error('Browser not launched');
+    return this.page.url();
+  }
+
+  async wait(ms: number): Promise<void> {
+    if (!this.page) throw new Error('Browser not launched');
+    await this.page.waitForTimeout(ms);
+    console.log(`[⏳] Waited for ${ms}ms`);
   }
   
   async close() {

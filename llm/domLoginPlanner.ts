@@ -6,48 +6,72 @@ import OpenAI from 'openai';
  * OpenAI client instance configured with API key from environment variables
  */
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+    apiKey: process.env.OPENAI_API_KEY
 });
 
 /**
- * Analyzes HTML of a login page to identify CSS selectors for login form elements
- * 
- * @param html - The HTML source code of the login page
- * @param site - The name of the website (used for context in the prompt)
- * @returns Promise<{email: string, password: string, submit: string}> Object containing CSS selectors for:
- *          - email: Selector for the email input field
- *          - password: Selector for the password input field
- *          - submit: Selector for the submit/login button
- * 
- * @example
- * const selectors = await getLoginPlanFromDOM(html, 'example.com');
- * // Returns: { email: '#email', password: '#password', submit: 'button[type="submit"]' }
+ * Extracts only relevant HTML for login analysis (inputs, buttons, forms).
  */
 export async function getLoginPlanFromDOM(html: string, site: string) {
-  const prompt = `
-The following is the HTML source of a login page for ${site}.
-Identify the selector I should use to:
-1. Type in the email
-2. Type in the password
-3. Click to submit
+    // Sanitize large HTML inputs
+    const trimmedHTML = trimLoginDOM(html);
 
-Respond in JSON format like:
+    const prompt = `
+You are a web automation expert helping an AI agent identify login form elements from HTML.
+
+Your task is to extract ONLY the CSS selectors for:
+1. The email input
+2. The password input
+3. The login/submit button
+
+Respond in **raw JSON only**. Do NOT explain, do NOT return markdown, do NOT include HTML or comments.
+
+Use this format:
 {
   "email": "<css-selector>",
   "password": "<css-selector>",
   "submit": "<css-selector>"
 }
 
-HTML:
-${html}
+Below is the partial HTML:
+
+${trimmedHTML}
 `;
 
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0
-  });
+    const res = await openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0
+    });
 
-  const json = res.choices[0].message?.content || '{}';
-  return JSON.parse(json);
+    let raw = res.choices[0].message?.content || '{}';
+
+    // Remove markdown wrappers like ```json or ```html
+    raw = raw.trim().replace(/^```[a-z]*\n?/i, '').replace(/```$/, '');
+
+    try {
+        return JSON.parse(raw);
+    } catch (err) {
+        console.error('[❌] Failed to parse GPT response as JSON:', raw);
+        throw err;
+    }
+
+}
+
+/**
+ * Helper function to trim the full HTML and keep only login-relevant tags.
+ */
+function trimLoginDOM(fullHTML: string): string {
+    // Extract only inputs, buttons, forms (up to a safe character limit)
+    const inputMatches = (fullHTML.match(/<input[^>]*>/g) || []).map(String);
+    const buttonMatches = (fullHTML.match(/<button[^>]*>.*?<\/button>/g) || []).map(String);
+    const formMatches = (fullHTML.match(/<form[^>]*>.*?<\/form>/gs) || []).map(String);
+
+    const partialHTML = inputMatches
+        .concat(buttonMatches)
+        .concat(formMatches)
+        .join('\n')
+        .slice(0, 6000); // limit to avoid token overflow
+
+    return partialHTML;
 }
