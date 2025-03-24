@@ -1,103 +1,156 @@
-// ./notionBot.ts
-
 import { chromium } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 import { Navigator } from './browser/navigator';
-import { loadSession, saveSession } from './browser/sessionManager';
-import { getLoginPlanFromDOM } from './llm/domLoginPlanner';
+import { askGPTVisionWhatToDo } from './llm/visionPlanner.ts';
 import dotenv from 'dotenv';
 
-// Load environment variables
 dotenv.config();
 
-const EMAIL = process.env.NOTION_EMAIL;
-const PASSWORD = process.env.NOTION_PASSWORD;
-const SITE = 'Notion';
+const SCREENSHOT_DIR = 'screenshots';
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000; // 2 seconds
 
-if (!EMAIL || !PASSWORD) {
-    throw new Error('NOTION_EMAIL and NOTION_PASSWORD must be set in .env file');
+async function performActionWithRetry(
+  action: () => Promise<void>,
+  actionName: string,
+  maxRetries: number = MAX_RETRIES
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await action();
+      return true;
+    } catch (error) {
+      console.warn(`[⚠️] Attempt ${attempt}/${maxRetries} failed for ${actionName}:`, error);
+      if (attempt < maxRetries) {
+        console.log(`[⏳] Waiting ${RETRY_DELAY}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+  }
+  return false;
 }
 
 export const launchBot = async () => {
     const browser = await chromium.launch({ headless: false });
+    const userDataDir = path.join(process.cwd(), 'playwright-data');
+    
+    // Create persistent context with user data directory
+    const context = await browser.newContext({
+      storageState: userDataDir,
+      viewport: { width: 1280, height: 720 },
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+      permissions: ['geolocation'],
+      geolocation: { latitude: 40.7128, longitude: -74.0060 },
+      colorScheme: 'light'
+    });
 
-    // Load existing session or start fresh
-    const context = await loadSession(browser);
     const page = await context.newPage();
     const bot = new Navigator();
-    await bot.setPage(page);  // Set the existing page instead of launching new browser
-
-    // Navigate to Notion
+    await bot.setPage(page);
+  
+    if (!fs.existsSync(SCREENSHOT_DIR)) {
+      fs.mkdirSync(SCREENSHOT_DIR);
+    }
+  
     await bot.navigateTo('https://www.notion.so/');
+  
+    let step = 1;
+    const actionHistory: { action: string; selector?: string; tabIndex?: number; timestamp: number }[] = [];
+  
+    while (step < 20) {
+      const screenshotPath = path.join(SCREENSHOT_DIR, `step-${step}.png`);
+      await bot.captureViewportScreenshot(screenshotPath);
 
-    // Check if already logged in by looking for dashboard elements
-    try {
-        await bot.waitForSelector('text=Quick Find', { timeout: 5000 });
-        console.log('[✅] Already logged in via session.');
-        await browser.close();
-        return;
-    } catch (e) {
-        console.log('[🔑] Not logged in, proceeding with login...');
-    }
+      // Collect information about all open pages
+      const pages = await Promise.all(
+        context.pages().map(async (p, index) => ({
+          index,
+          url: p.url(),
+          title: await p.title()
+        }))
+      );
+  
+      const gptResponse = await askGPTVisionWhatToDo(screenshotPath, pages, actionHistory);
+  
+      console.log(`\n[🧠] GPT Suggestion (Step ${step}):\n`, gptResponse);
+      console.log('\n[📑] Open Pages:', pages.map(p => `\n  Tab ${p.index}: ${p.title}`).join(''));
+  
+      // Get the target page for the action
+      const targetTabIndex = gptResponse.tabIndex ?? 0;
+      const targetPage = context.pages()[targetTabIndex];
+      
+      if (!targetPage) {
+        console.warn(`[⚠️] Target tab ${targetTabIndex} not found. Skipping action...`);
+        continue;
+      }
 
-    // Try clicking a login entry point (if not already showing fields)
-    const loginTriggers = ['text=Log in', 'text=Login', 'text=Sign in'];
-
-    for (const selector of loginTriggers) {
-        try {
-            console.log(`[⏳] Attempting to click: ${selector}`);
-            await bot.click(selector);
-            console.log(`[✅] Clicked login trigger: ${selector}`);
-            break; // stop after first success
-        } catch (err) {
-            console.log(`[🚫] Failed to click ${selector}, trying next...`);
+      // Switch to target page if needed
+      if (targetTabIndex !== pages.findIndex(p => p.url === page.url())) {
+        await targetPage.bringToFront();
+        await bot.setPage(targetPage);
+        console.log(`[🔄] Switched to tab ${targetTabIndex} for action`);
+      }
+  
+      let actionSuccess = false;
+  
+      if (gptResponse.action === 'click' && gptResponse.selector) {
+        console.log(`[🖱] Clicking "${gptResponse.selector}" on tab ${targetTabIndex}`);
+        actionSuccess = await performActionWithRetry(
+          () => bot.click(gptResponse.selector!),
+          `click ${gptResponse.selector}`
+        );
+      } else if (gptResponse.action === 'type' && gptResponse.selector && gptResponse.text) {
+        console.log(`[⌨️] Typing into "${gptResponse.selector}" on tab ${targetTabIndex}`);
+        actionSuccess = await performActionWithRetry(
+          () => bot.type(gptResponse.selector!, gptResponse.text!),
+          `type into ${gptResponse.selector}`
+        );
+      } else if (gptResponse.action === 'scroll') {
+        console.log(`[🖱] Scrolling on tab ${targetTabIndex}`);
+        actionSuccess = await performActionWithRetry(
+          () => page.mouse.wheel(0, 300),
+          'scroll'
+        );
+      } else if (gptResponse.action === 'switchTab' && typeof gptResponse.tabIndex === 'number') {
+        const pages = context.pages();
+        if (pages[gptResponse.tabIndex]) {
+          actionSuccess = await performActionWithRetry(
+            async () => {
+              await pages[gptResponse.tabIndex!].bringToFront();
+              await bot.setPage(pages[gptResponse.tabIndex!]);
+            },
+            `switch to tab ${gptResponse.tabIndex}`
+          );
         }
+      } else if (gptResponse.action === 'done') {
+        console.log('[✅] Bot task complete!');
+        break;
+      } else {
+        console.warn('[⚠️] Unknown action or missing parameters. Skipping...');
+      }
+
+      if (!actionSuccess) {
+        console.error(`[❌] Failed to perform action after ${MAX_RETRIES} attempts. Stopping...`);
+        break;
+      }
+
+      // Record the action in history
+      actionHistory.push({
+        action: gptResponse.action,
+        selector: gptResponse.selector,
+        tabIndex: gptResponse.tabIndex,
+        timestamp: Date.now()
+      });
+  
+      await page.waitForTimeout(1000); // Wait for potential child pages
+      step++;
+      console.log(`[🔍] Step ${step} complete`);
     }
-
-    // Get the page DOM and send it to the LLM first
-    const dom = await bot.getPageContent();
-    const selectors = await getLoginPlanFromDOM(dom, SITE);
-
-    const description = await bot.describeInput(selectors.email);
-    console.log(`[🔍] Email input description: ${description}`);
-
-    console.log('[🤖] Login selectors from GPT:', selectors);
-
-    // Track page state before login attempt
-    const beforeURL = await bot.getCurrentURL();
-    const beforeDOM = await bot.getPageContent();
-
-    // Start login process
-    await bot.click(selectors.email);
-    await bot.type(selectors.email, EMAIL);
-
-    if (selectors.continue) {
-        await bot.click(selectors.continue);
-    }
-
-    // Detect if page changed
-    await bot.wait(2000);
-    const afterURL = await bot.getCurrentURL();
-    const afterDOM = await bot.getPageContent();
-
-    if (afterURL !== beforeURL) {
-        console.log(`[🌍] URL changed: ${beforeURL} → ${afterURL}`);
-    } else if (beforeDOM !== afterDOM) {
-        console.log('[🧠] DOM changed — likely advanced to password step.');
-    } else {
-        console.log('[↩️] Page did not visibly change — may still be on email step.');
-    }
-
-    // Complete login process
-    await bot.click(selectors.password);
-    await bot.type(selectors.password, PASSWORD);
-    await bot.click(selectors.submit);
-
-    // Wait for dashboard or workspace indicator
-    await bot.waitForSelector('text=Quick Find', { timeout: 15000 });
-    console.log('[🏠] Logged in and on dashboard!');
-
-    // Save session
-    await saveSession(context);
-
-    await browser.close();
-};
+  
+    // await browser.close();
+  };

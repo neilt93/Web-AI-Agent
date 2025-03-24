@@ -55,6 +55,7 @@ ${trimmedHTML}
         console.error('[❌] Failed to parse GPT response as JSON:', raw);
         throw err;
     }
+    
 
 }
 

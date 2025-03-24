@@ -1,4 +1,6 @@
 import { chromium, Browser, Page } from '@playwright/test';
+import * as Tesseract from 'tesseract.js';
+import fs from 'fs';
 
 export class Navigator {
   private browser: Browser | null = null;
@@ -64,6 +66,24 @@ export class Navigator {
   async getCurrentURL(): Promise<string> {
     if (!this.page) throw new Error('Browser not launched');
     return this.page.url();
+  }
+
+  async captureScreenshot(filename: string = 'page.png') {
+    if (!this.page) throw new Error('Browser not launched');
+    await this.page.screenshot({ path: filename, fullPage: true });
+    console.log(`[📸] Screenshot saved to ${filename}`);
+  }
+
+  async captureViewportScreenshot(filename: string) {
+    if (!this.page) throw new Error('Browser not launched');
+    await this.page.screenshot({ path: filename, fullPage: false }); // only visible area
+  }
+  
+  
+  async extractTextFromScreenshot(imagePath: string = 'page.png') {
+    console.log('[🧠] Running OCR...');
+    const result = await Tesseract.recognize(imagePath, 'eng');
+    return result.data.text;
   }
 
   async wait(ms: number): Promise<void> {
