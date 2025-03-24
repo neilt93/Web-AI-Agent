@@ -65,6 +65,14 @@ For OAuth flows:
 1. When you see a Google Sign In popup, switch to that tab immediately
 2. Never click "Continue with Google" on the main page if a Google Sign In popup is open
 3. Look for the popup tab in the list of open pages and use its tabIndex
+4. For Google Sign In, look for the email input field and type the email address
+5. After typing email, look for the "Next" button (not "Continue")
+
+Button Selection Rules:
+1. Use exact text matches for buttons
+2. For Google Sign In, use "Next" instead of "Continue"
+3. Avoid clicking disabled buttons (they appear grayed out)
+4. If a button has multiple states, use the most specific selector (e.g., "button:has-text('Continue with Google')" vs "text=Continue")
 
 Respond with one of these actions in JSON format:
 - Click a button or link: { "action": "click", "selector": "text=Button Name", "tabIndex": 0 } (use exact text seen in screenshot)

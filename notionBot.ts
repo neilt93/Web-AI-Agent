@@ -32,12 +32,9 @@ async function performActionWithRetry(
 }
 
 export const launchBot = async () => {
-    const browser = await chromium.launch({ headless: false });
     const userDataDir = path.join(process.cwd(), 'playwright-data');
-    
-    // Create persistent context with user data directory
-    const context = await browser.newContext({
-      storageState: userDataDir,
+    const browser = await chromium.launchPersistentContext(userDataDir, {
+      headless: false,
       viewport: { width: 1280, height: 720 },
       deviceScaleFactor: 1,
       isMobile: false,
@@ -46,10 +43,34 @@ export const launchBot = async () => {
       timezoneId: 'America/New_York',
       permissions: ['geolocation'],
       geolocation: { latitude: 40.7128, longitude: -74.0060 },
-      colorScheme: 'light'
+      colorScheme: 'light',
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-for-policy'
+      ],
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     });
 
-    const page = await context.newPage();
+    const page = await browser.newPage();
+    
+    // Add additional headers to make the browser appear more legitimate
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"macOS"',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+      'sec-fetch-user': '?1',
+      'Upgrade-Insecure-Requests': '1'
+    });
+
     const bot = new Navigator();
     await bot.setPage(page);
   
@@ -68,7 +89,7 @@ export const launchBot = async () => {
 
       // Collect information about all open pages
       const pages = await Promise.all(
-        context.pages().map(async (p, index) => ({
+        browser.pages().map(async (p, index) => ({
           index,
           url: p.url(),
           title: await p.title()
@@ -82,7 +103,7 @@ export const launchBot = async () => {
   
       // Get the target page for the action
       const targetTabIndex = gptResponse.tabIndex ?? 0;
-      const targetPage = context.pages()[targetTabIndex];
+      const targetPage = browser.pages()[targetTabIndex];
       
       if (!targetPage) {
         console.warn(`[⚠️] Target tab ${targetTabIndex} not found. Skipping action...`);
@@ -117,7 +138,7 @@ export const launchBot = async () => {
           'scroll'
         );
       } else if (gptResponse.action === 'switchTab' && typeof gptResponse.tabIndex === 'number') {
-        const pages = context.pages();
+        const pages = browser.pages();
         if (pages[gptResponse.tabIndex]) {
           actionSuccess = await performActionWithRetry(
             async () => {
